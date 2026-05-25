@@ -7,7 +7,33 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <section id="screen-lobby" class="screen">
+    <div class="panel">
+      <h1>Swarm IO</h1>
+      <p>Eat glowing food, grow longer, and survive the swarm.</p>
+      <label for="player-name">Player name</label>
+      <input id="player-name" maxlength="16" value="Player" autocomplete="off">
+      <p id="lobby-highscore">High score: 0</p>
+      <div id="theme-list" class="theme-list">
+        <button class="theme-card selected" data-theme="classic">Classic</button>
+        <button class="theme-card" data-theme="neon">Neon</button>
+        <button class="theme-card" data-theme="pastel">Pastel</button>
+        <button class="theme-card" data-theme="ocean">Ocean</button>
+        <button class="theme-card" data-theme="desert">Desert</button>
+      </div>
+      <button id="play-button" class="primary-button">Play</button>
+    </div>
+  </section>
   <canvas id="game-canvas"></canvas>
+  <section id="screen-death" class="screen hidden">
+    <div class="panel">
+      <h2>You died</h2>
+      <p id="final-score">Final length: 0</p>
+      <p id="killed-by">Killed by: Unknown</p>
+      <p id="new-highscore" class="hidden">New high score!</p>
+      <button id="again-button" class="primary-button">Play Again</button>
+    </div>
+  </section>
   <script src="game.js"></script>
 </body>
 </html>
