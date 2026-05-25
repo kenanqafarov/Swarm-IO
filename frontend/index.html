@@ -8,21 +8,35 @@
 </head>
 <body>
   <section id="screen-lobby" class="screen">
+    <div class="corner-widget graphics-widget">
+      <span>Graphics:</span>
+      <strong>High quality</strong>
+      <div class="graphics-snake-icon"></div>
+    </div>
     <div class="panel">
-      <h1>Swarm IO</h1>
-      <p>Eat glowing food, grow longer, and survive the swarm.</p>
+      <h1><span class="logo-green">slither</span><span class="logo-purple">.io</span></h1>
+      <div class="subtitle">Eat to grow longer!</div>
       <label for="player-name">Player name</label>
-      <input id="player-name" maxlength="16" value="Player" autocomplete="off">
+      <input id="player-name" maxlength="16" placeholder="Nickname" autocomplete="off">
       <p id="lobby-highscore">High score: 0</p>
-      <div id="theme-list" class="theme-list">
-        <button class="theme-card selected" data-theme="classic">Classic</button>
-        <button class="theme-card" data-theme="neon">Neon</button>
-        <button class="theme-card" data-theme="pastel">Pastel</button>
-        <button class="theme-card" data-theme="ocean">Ocean</button>
-        <button class="theme-card" data-theme="desert">Desert</button>
-      </div>
       <button id="play-button" class="primary-button">Play</button>
     </div>
+    <div class="corner-widget skin-widget" id="skin-selector-btn">
+      <div class="skin-snake-icon"></div>
+      <span>Change Skin</span>
+    </div>
+    <div id="theme-list" class="theme-list hidden">
+      <button class="theme-card selected" data-theme="classic">Classic</button>
+      <button class="theme-card" data-theme="neon">Neon</button>
+      <button class="theme-card" data-theme="pastel">Pastel</button>
+      <button class="theme-card" data-theme="ocean">Ocean</button>
+      <button class="theme-card" data-theme="desert">Desert</button>
+    </div>
+    <div class="corner-widget server-widget">
+      <div class="globe-icon"></div>
+      <span>Choose Server</span>
+    </div>
+    <div class="footer-links">privacy - terms of service - contact</div>
   </section>
   <canvas id="game-canvas"></canvas>
   <section id="screen-death" class="screen hidden">

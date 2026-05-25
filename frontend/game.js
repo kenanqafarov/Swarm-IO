@@ -11,6 +11,8 @@ const finalScoreText = document.getElementById('final-score');
 const killedByText = document.getElementById('killed-by');
 const newHighscoreText = document.getElementById('new-highscore');
 const themeButtons = document.querySelectorAll('.theme-card');
+const skinSelectorBtn = document.getElementById('skin-selector-btn');
+const themeList = document.getElementById('theme-list');
 
 class Renderer {
   constructor(context) {
@@ -58,17 +60,39 @@ class Renderer {
   drawGrid(context, state, left, right, top, bottom) {
     context.fillStyle = state.theme.background;
     context.fillRect(Math.round(left), Math.round(top), this.width, this.height);
-    context.strokeStyle = state.theme.grid;
-    context.lineWidth = 1;
+    const size = 36;
+    const w = size * 2;
+    const h = Math.sqrt(3) * size;
+    const startCol = Math.floor(left / (w * 0.75)) - 1;
+    const endCol = Math.ceil(right / (w * 0.75)) + 1;
+    const startRow = Math.floor(top / h) - 1;
+    const endRow = Math.ceil(bottom / h) + 1;
+    context.lineWidth = 5;
+    for (let col = startCol; col < endCol; col++) {
+      for (let row = startRow; row < endRow; row++) {
+        const x = col * w * 0.75;
+        const y = row * h + (col % 2) * h / 2;
+        this.drawHex(context, x, y, size);
+      }
+    }
+  }
+
+  drawHex(context, x, y, size) {
     context.beginPath();
-    for (let x = Math.floor(left / 50) * 50; x < right; x += 50) {
-      context.moveTo(Math.round(x), Math.round(top));
-      context.lineTo(Math.round(x), Math.round(bottom));
+    for (let i = 0; i < 6; i++) {
+      const angle = Math.PI / 6 + i * Math.PI / 3;
+      const px = Math.round(x + Math.cos(angle) * size);
+      const py = Math.round(y + Math.sin(angle) * size);
+      if (i === 0) context.moveTo(px, py);
+      else context.lineTo(px, py);
     }
-    for (let y = Math.floor(top / 50) * 50; y < bottom; y += 50) {
-      context.moveTo(Math.round(left), Math.round(y));
-      context.lineTo(Math.round(right), Math.round(y));
-    }
+    context.closePath();
+    context.fillStyle = '#1b2632';
+    context.fill();
+    context.strokeStyle = '#080d13';
+    context.stroke();
+    context.strokeStyle = 'rgba(55, 72, 91, 0.38)';
+    context.lineWidth = 1;
     context.stroke();
   }
 
@@ -80,10 +104,13 @@ class Renderer {
       for (let i = 0; i < items.length; i++) {
         const food = items[i];
         if (food.x < left - 20 || food.x > right + 20 || food.y < top - 20 || food.y > bottom + 20) continue;
+        context.shadowColor = food.color;
+        context.shadowBlur = food.value > 1 ? 26 : 14;
         context.moveTo(Math.round(food.x + food.radius), Math.round(food.y));
         context.arc(Math.round(food.x), Math.round(food.y), food.radius, 0, Math.PI * 2);
       }
       context.fill();
+      context.shadowBlur = 0;
     }
   }
 
@@ -93,6 +120,8 @@ class Renderer {
       if (!snake.alive) continue;
       const radius = 6 + Math.min(snake.segments.length / 30, 1) * 10;
       context.fillStyle = snake.color;
+      context.shadowColor = snake.color;
+      context.shadowBlur = 10;
       for (let i = snake.segments.length - 1; i >= 0; i--) {
         const segment = snake.segments[i];
         const x = lerp(segment.renderX, segment.x, 0.35);
@@ -104,6 +133,7 @@ class Renderer {
         context.arc(Math.round(x), Math.round(y), radius, 0, Math.PI * 2);
         context.fill();
       }
+      context.shadowBlur = 0;
       if (snake.segments.length) this.drawHead(context, snake, radius * 1.2);
     }
   }
@@ -113,9 +143,12 @@ class Renderer {
     const x = Math.round(head.renderX);
     const y = Math.round(head.renderY);
     context.fillStyle = snake.color;
+    context.shadowColor = snake.color;
+    context.shadowBlur = 12;
     context.beginPath();
     context.arc(x, y, radius, 0, Math.PI * 2);
     context.fill();
+    context.shadowBlur = 0;
     const eyeX = Math.cos(snake.angle + Math.PI / 2) * radius * 0.38;
     const eyeY = Math.sin(snake.angle + Math.PI / 2) * radius * 0.38;
     const frontX = Math.cos(snake.angle) * radius * 0.45;
@@ -129,36 +162,51 @@ class Renderer {
 
   drawHud(context, state) {
     const player = state.snakes[state.selfId];
-    context.fillStyle = '#ffffff';
-    context.font = '18px Arial';
-    context.fillText('Length: ' + (player ? player.segments.length : 0), 20, this.height - 24);
-    context.fillText('Map', 20, 28);
-    context.strokeStyle = '#ffffff';
-    context.strokeRect(20, 38, 100, 100);
+    context.fillStyle = 'rgba(190, 200, 215, 0.72)';
+    context.font = '12px Verdana';
+    context.fillText('Your length: ' + (player ? player.segments.length : 0), 6, this.height - 27);
+    context.fillText('Your rank: 1 of ' + Math.max(1, this.countAlive(state)), 6, this.height - 10);
+    context.save();
+    context.globalAlpha = 0.34;
+    context.strokeStyle = '#9aa7b8';
+    context.strokeRect(this.width - 104, this.height - 122, 82, 82);
     for (const id in state.snakes) {
       const snake = state.snakes[id];
       if (!snake.alive || !snake.segments.length) continue;
       context.fillStyle = id === state.selfId ? '#ffffff' : snake.color;
-      context.fillRect(20 + snake.segments[0].x / state.mapSize * 100 - 2, 38 + snake.segments[0].y / state.mapSize * 100 - 2, 4, 4);
+      context.fillRect(this.width - 104 + snake.segments[0].x / state.mapSize * 82 - 2, this.height - 122 + snake.segments[0].y / state.mapSize * 82 - 2, 4, 4);
     }
+    context.restore();
     context.textAlign = 'right';
-    context.fillStyle = '#ffffff';
-    context.fillText('Leaderboard', this.width - 20, 28);
+    context.font = 'bold 18px Verdana';
+    context.fillStyle = '#e8edf7';
+    context.fillText('Leaderboard', this.width - 25, 16);
+    context.font = '12px Verdana';
     for (let i = 0; i < state.leaderboard.length && i < 10; i++) {
       const row = state.leaderboard[i];
-      context.fillStyle = row.id === state.selfId ? '#facc15' : '#ffffff';
-      context.fillText((i + 1) + '. ' + row.name + ' ' + row.length, this.width - 20, 54 + i * 22);
+      context.fillStyle = row.id === state.selfId ? '#a16bff' : ['#8f54ff', '#ff4b65', '#51a7ff', '#ffb84d', '#c9e75b'][i % 5];
+      context.fillText('#' + (i + 1) + '   ' + row.name, this.width - 78, 38 + i * 19);
+      context.fillStyle = 'rgba(170, 155, 220, 0.85)';
+      context.fillText(row.length, this.width - 12, 38 + i * 19);
     }
+    context.fillStyle = 'rgba(190, 200, 215, 0.55)';
+    context.fillText('server 4490', this.width - 38, this.height - 10);
     context.textAlign = 'left';
+  }
+
+  countAlive(state) {
+    let count = 0;
+    for (const id in state.snakes) if (state.snakes[id].alive) count++;
+    return count;
   }
 }
 
 const THEMES = {
-  classic: { background: '#07111f', grid: 'rgba(255,255,255,0.07)', snake: '#34d399', food: ['#f87171', '#facc15', '#60a5fa'] },
-  neon: { background: '#080014', grid: 'rgba(236,72,153,0.16)', snake: '#22d3ee', food: ['#f0abfc', '#a3e635', '#fb7185'] },
-  pastel: { background: '#1f2937', grid: 'rgba(255,255,255,0.08)', snake: '#f9a8d4', food: ['#bfdbfe', '#bbf7d0', '#fde68a'] },
-  ocean: { background: '#082f49', grid: 'rgba(125,211,252,0.14)', snake: '#38bdf8', food: ['#99f6e4', '#fef08a', '#c4b5fd'] },
-  desert: { background: '#3b2306', grid: 'rgba(251,191,36,0.12)', snake: '#fb923c', food: ['#fef3c7', '#fdba74', '#bef264'] }
+  classic: { background: '#101922', grid: 'rgba(255,255,255,0.07)', snake: '#b7eee8', food: ['#f87171', '#facc15', '#60a5fa', '#d946ef', '#a7f3d0'] },
+  neon: { background: '#101922', grid: 'rgba(236,72,153,0.16)', snake: '#22d3ee', food: ['#f0abfc', '#a3e635', '#fb7185', '#67e8f9'] },
+  pastel: { background: '#101922', grid: 'rgba(255,255,255,0.08)', snake: '#f9a8d4', food: ['#bfdbfe', '#bbf7d0', '#fde68a', '#ddd6fe'] },
+  ocean: { background: '#101922', grid: 'rgba(125,211,252,0.14)', snake: '#38bdf8', food: ['#99f6e4', '#fef08a', '#c4b5fd', '#93c5fd'] },
+  desert: { background: '#101922', grid: 'rgba(251,191,36,0.12)', snake: '#fb923c', food: ['#fef3c7', '#fdba74', '#bef264', '#fca5a5'] }
 };
 
 const renderer = new Renderer(ctx);
@@ -340,6 +388,16 @@ againButton.addEventListener('click', function () {
   } else {
     startLocalFallback();
   }
+});
+skinSelectorBtn.addEventListener('click', function (e) {
+  e.stopPropagation();
+  themeList.classList.toggle('hidden');
+});
+document.addEventListener('click', function () {
+  themeList.classList.add('hidden');
+});
+themeList.addEventListener('click', function (e) {
+  e.stopPropagation();
 });
 renderer.resize();
 showScreen('lobby');
