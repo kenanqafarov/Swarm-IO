@@ -1,0 +1,12 @@
+{
+  "name": "swarm-io-backend",
+  "version": "1.0.0",
+  "description": "WebSocket backend for Swarm IO",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
