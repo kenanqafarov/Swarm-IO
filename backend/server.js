@@ -3,7 +3,7 @@ const WebSocket = require('ws');
 
 const PORT = process.env.PORT || 3000;
 const TICK_MS = 50;
-const MAP_SIZE = 3000;
+const MAP_SIZE = 10000; // Increased battleground play area size to 10000x10000!
 const CELL_SIZE = 50;
 const FOOD_RADIUS = 5;
 const THEMES = {
@@ -20,11 +20,13 @@ class Snake {
     this.name = name;
     this.segments = [];
     this.angle = Math.random() * Math.PI * 2;
-    this.speed = 5;
+    this.speed = 3.0;
     this.color = color;
     this.alive = true;
     this.score = 12;
     this.grow = 0;
+    this.boost = false;
+    this.boostCounter = 0;
     for (let i = 0; i < 12; i++) this.segments.push({ x: x - i * 8, y });
   }
 
@@ -34,12 +36,33 @@ class Snake {
 
   move() {
     if (!this.alive) return null;
+    
+    // Set speed based on boost
+    const canBoost = this.boost && this.segments.length > 12;
+    if (canBoost) {
+      this.speed = 6.0;
+    } else {
+      this.speed = 3.0;
+    }
+
     const head = this.segments[0];
     const next = { x: head.x + Math.cos(this.angle) * this.speed, y: head.y + Math.sin(this.angle) * this.speed };
     this.segments.unshift(next);
     const grew = this.grow > 0;
     if (this.grow > 0) this.grow--;
     else this.segments.pop();
+
+    if (canBoost) {
+      this.boostCounter++;
+      // Consume segment every 8 ticks (400ms) of boosting
+      if (this.boostCounter >= 8) {
+        this.boostCounter = 0;
+        this.segments.pop(); // Pop tail segment
+      }
+    } else {
+      this.boostCounter = 0;
+    }
+
     this.score = this.segments.length;
     return { id: this.id, head: next, angle: this.angle, grow: grew };
   }
@@ -61,22 +84,25 @@ class Bot extends Snake {
       const snake = room.snakes[id];
       if (snake === this || !snake.alive || snake.segments.length <= this.segments.length) continue;
       const other = snake.segments[0];
-      if (distance(head, other) < 180) threat = other;
+      const dx = head.x - other.x;
+      const dy = head.y - other.y;
+      if (dx * dx + dy * dy < 32400) threat = other; // 180 * 180 = 32400
     }
-    for (let i = 0; i < room.food.length; i++) {
-      if (distance(head, room.food[i]) < 250) {
-        food = room.food[i];
-        break;
-      }
-    }
+    
+    // Find closest food within 250px using spatial grid
+    food = room.findNearbyFood(head.x, head.y, 250);
+
     if (threat) this.state = 'EVADE';
     else if (food) this.state = 'EAT';
     else this.state = 'ROAM';
+    this.boost = (this.state === 'EVADE') && this.segments.length > 12;
     let targetAngle = this.angle;
     if (this.state === 'EVADE') targetAngle = Math.atan2(head.y - threat.y, head.x - threat.x) + Math.PI / 4;
     if (this.state === 'EAT') targetAngle = Math.atan2(food.y - head.y, food.x - head.x);
     if (this.state === 'ROAM') {
-      if (Date.now() > this.targetUntil || distance(head, this.target) < 40) {
+      const dx = head.x - this.target.x;
+      const dy = head.y - this.target.y;
+      if (Date.now() > this.targetUntil || dx * dx + dy * dy < 1600) { // 40 * 40 = 1600
         const range = 400 + Math.random() * 400;
         const angle = Math.random() * Math.PI * 2;
         this.target.x = clamp(head.x + Math.cos(angle) * range, 150, MAP_SIZE - 150);
@@ -89,38 +115,34 @@ class Bot extends Snake {
   }
 }
 
-class Food {
-  constructor(id, x, y, color, value) {
-    this.id = id;
-    this.x = x;
-    this.y = y;
-    this.color = color;
-    this.value = value;
-    this.radius = value > 1 ? 8 : FOOD_RADIUS;
-  }
-}
+const BOT_NAMES = [
+  'ProPlayer', 'Alpha', 'Nexus', 'Swift', 'Swarm', 'Viper', 'Shadow', 'Ghost', 'Blaze', 
+  'Quantum', 'Phoenix', 'Cobart', 'Nebula', 'Apex', 'Raptor', 'Stinger', 'Zenith', 'Hydra', 
+  'Striker', 'Titan', 'Fury', 'Goliath', 'Specter', 'Vortex', 'Pulse', 'Crimson'
+];
 
 class GameRoom {
   constructor() {
     this.snakes = {};
     this.clients = new Map();
-    this.food = [];
     this.nextId = 1;
     this.lastScores = 0;
-    for (let i = 0; i < 450; i++) this.spawnFood();
-    for (let i = 0; i < 8; i++) this.addBot();
+    // Spawn 25 bots to keep the giant battleground alive and populated
+    for (let i = 0; i < 25; i++) this.addBot();
   }
 
   addClient(ws, name, theme) {
     const snake = new Snake(String(this.nextId++), cleanName(name), rand(200, MAP_SIZE - 200), rand(200, MAP_SIZE - 200), (THEMES[theme] || THEMES.classic).snake);
     this.snakes[snake.id] = snake;
     this.clients.set(ws, snake.id);
-    ws.send(JSON.stringify({ type: 'init', selfId: snake.id, mapSize: MAP_SIZE, snakes: Object.values(this.snakes), food: this.food, config: { tickMs: TICK_MS } }));
+    ws.send(JSON.stringify({ type: 'init', selfId: snake.id, mapSize: MAP_SIZE, snakes: Object.values(this.snakes), food: [], config: { tickMs: TICK_MS } }));
   }
 
   addBot() {
     const colors = ['#ef4444', '#8b5cf6', '#06b6d4', '#84cc16'];
-    const bot = new Bot('bot-' + this.nextId++, 'Bot ' + this.nextId, rand(200, MAP_SIZE - 200), rand(200, MAP_SIZE - 200), colors[this.nextId % colors.length]);
+    const nameIndex = Math.floor(Math.random() * BOT_NAMES.length);
+    const botName = BOT_NAMES[nameIndex] + ' (bot)';
+    const bot = new Bot('bot-' + this.nextId++, botName, rand(200, MAP_SIZE - 200), rand(200, MAP_SIZE - 200), colors[this.nextId % colors.length]);
     this.snakes[bot.id] = bot;
   }
 
@@ -130,53 +152,34 @@ class GameRoom {
     if (!old) return;
     const snake = new Snake(id, old.name, rand(200, MAP_SIZE - 200), rand(200, MAP_SIZE - 200), old.color);
     this.snakes[id] = snake;
-    ws.send(JSON.stringify({ type: 'init', selfId: id, mapSize: MAP_SIZE, snakes: Object.values(this.snakes), food: this.food, config: { tickMs: TICK_MS } }));
-  }
-
-  spawnFood(x, y, value) {
-    const colors = THEMES.classic.food;
-    this.food.push(new Food('food-' + this.nextId++, x == null ? Math.random() * MAP_SIZE : x, y == null ? Math.random() * MAP_SIZE : y, colors[Math.floor(Math.random() * colors.length)], value || 1));
-    return this.food[this.food.length - 1];
+    ws.send(JSON.stringify({ type: 'init', selfId: id, mapSize: MAP_SIZE, snakes: Object.values(this.snakes), food: [], config: { tickMs: TICK_MS } }));
   }
 
   tick() {
     const moved = [];
     const died = [];
-    const ate = [];
-    const spawned = [];
     for (const id in this.snakes) if (this.snakes[id] instanceof Bot) this.snakes[id].updateAI(this);
     for (const id in this.snakes) {
-      const move = this.snakes[id].move();
-      if (move) moved.push(move);
+      const snake = this.snakes[id];
+      const move = snake.move();
+      if (move) {
+        moved.push({ id: move.id, head: move.head, angle: move.angle, grow: move.grow, boost: snake.boost });
+      }
     }
-    this.collectFood(ate);
-    this.collide(died, spawned);
-    while (this.food.length < 450) spawned.push(this.spawnFood());
-    this.broadcast({ type: 'delta', moved, died, ate, spawned });
+    this.collide(died);
+    this.broadcast({ type: 'delta', moved, died });
     if (Date.now() - this.lastScores > 2000) {
       this.lastScores = Date.now();
       this.broadcast({ type: 'scores', leaderboard: this.leaderboard() });
     }
   }
 
-  collectFood(ate) {
-    for (const id in this.snakes) {
-      const snake = this.snakes[id];
-      if (!snake.alive) continue;
-      const head = snake.segments[0];
-      for (let i = this.food.length - 1; i >= 0; i--) {
-        const food = this.food[i];
-        if (distance(head, food) < snake.radius() + food.radius) {
-          snake.grow += food.value;
-          ate.push({ snakeId: id, foodId: food.id });
-          this.food.splice(i, 1);
-          break;
-        }
-      }
-    }
+  findNearbyFood(x, y, maxDistance) {
+    // Return null since food is client-side. Bots roam naturally.
+    return null;
   }
 
-  collide(died, spawned) {
+  collide(died) {
     const grid = new Map();
     for (const id in this.snakes) {
       const snake = this.snakes[id];
@@ -193,7 +196,7 @@ class GameRoom {
       if (!snake.alive) continue;
       const head = snake.segments[0];
       if (head.x < 0 || head.y < 0 || head.x > MAP_SIZE || head.y > MAP_SIZE) {
-        this.kill(id, died, spawned, 'Wall');
+        this.kill(id, died, 'Wall');
         continue;
       }
       const cx = Math.floor(head.x / CELL_SIZE);
@@ -203,12 +206,15 @@ class GameRoom {
           const items = grid.get(gx + ',' + gy) || [];
           for (let i = 0; i < items.length; i++) {
             const item = items[i];
-            if (item.id === id && item.index < 15) continue;
+            if (item.id === id) continue;
             const other = this.snakes[item.id];
             if (!other || !other.alive) continue;
-            if (distance(head, item.segment) < snake.radius() * 2) {
-              this.kill(id, died, spawned, other.name);
-              if (item.index === 0 && item.id !== id) this.kill(item.id, died, spawned, snake.name);
+            const dx = head.x - item.segment.x;
+            const dy = head.y - item.segment.y;
+            const r = snake.radius() * 2;
+            if (dx * dx + dy * dy < r * r) {
+              this.kill(id, died, other.name);
+              if (item.index === 0 && item.id !== id) this.kill(item.id, died, snake.name);
             }
           }
         }
@@ -216,12 +222,11 @@ class GameRoom {
     }
   }
 
-  kill(id, died, spawned, by) {
+  kill(id, died, by) {
     const snake = this.snakes[id];
     if (!snake || !snake.alive) return;
     snake.alive = false;
     died.push(id);
-    for (let i = 0; i < snake.segments.length; i += 2) spawned.push(this.spawnFood(snake.segments[i].x, snake.segments[i].y, 3));
     for (const pair of this.clients.entries()) {
       if (pair[1] === id) pair[0].send(JSON.stringify({ type: 'killed', by }));
     }
@@ -286,7 +291,16 @@ wss.on('connection', ws => {
     if (message.type === 'join') room.addClient(ws, message.name, message.theme);
     if (message.type === 'input') {
       const snake = room.snakes[room.clients.get(ws)];
-      if (snake && Number.isFinite(message.angle)) snake.angle = message.angle;
+      if (snake) {
+        if (Number.isFinite(message.angle)) snake.angle = message.angle;
+        if (typeof message.boost === 'boolean') snake.boost = message.boost;
+      }
+    }
+    if (message.type === 'eat') {
+      const snake = room.snakes[message.snakeId];
+      if (snake && Number.isFinite(message.value)) {
+        snake.grow += message.value;
+      }
     }
     if (message.type === 'respawn') room.respawn(ws);
   });
